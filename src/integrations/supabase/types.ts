@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      lead_searches: {
+        Row: {
+          city: string
+          country: string
+          created_at: string
+          id: string
+          lead_count: number
+          leads: Json
+          state: string | null
+          user_id: string
+        }
+        Insert: {
+          city: string
+          country: string
+          created_at?: string
+          id?: string
+          lead_count: number
+          leads: Json
+          state?: string | null
+          user_id: string
+        }
+        Update: {
+          city?: string
+          country?: string
+          created_at?: string
+          id?: string
+          lead_count?: number
+          leads?: Json
+          state?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_credits: {
         Row: {
           created_at: string
