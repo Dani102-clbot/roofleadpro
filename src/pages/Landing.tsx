@@ -47,11 +47,8 @@ export default function Landing() {
               Search roofing businesses anywhere in the U.S. and export verified local business leads instantly. Credits never expire.
             </p>
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <Button size="lg" asChild>
+              <Button size="lg" asChild className="shadow-[var(--shadow-glow)]">
                 <Link to="/signup">Start Free <ArrowRight className="ml-1 h-4 w-4" /></Link>
-              </Button>
-              <Button size="lg" variant="outline" asChild>
-                <a href="#how">View Demo</a>
               </Button>
             </div>
           </div>
