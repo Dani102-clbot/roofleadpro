@@ -101,7 +101,8 @@ export default function Dashboard() {
     if (!credits || credits < leadCount) return toast.error("Not enough credits");
     setSearching(true);
     await new Promise(r => setTimeout(r, 900));
-    const newLeads = generateLeads(leadCount, city.trim(), state, COUNTRIES.find(c => c.code === country)?.name ?? country);
+    const stateValue = state.trim();
+    const newLeads = generateLeads(leadCount, city.trim(), stateValue, COUNTRIES.find(c => c.code === country)?.name ?? country);
     setLeads(newLeads);
     const newCredits = credits - leadCount;
     setCredits(newCredits);
@@ -109,7 +110,7 @@ export default function Dashboard() {
     const { data: inserted } = await supabase.from("lead_searches").insert({
       user_id: user!.id,
       city: city.trim(),
-      state: isUS ? state || null : null,
+      state: isUS ? stateValue || null : stateValue || null,
       country: COUNTRIES.find(c => c.code === country)?.name ?? country,
       lead_count: leadCount,
       leads: newLeads as unknown as never,
