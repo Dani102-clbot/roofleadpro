@@ -104,9 +104,12 @@ export default function Dashboard() {
     const stateValue = state.trim();
     const newLeads = generateLeads(leadCount, city.trim(), stateValue, COUNTRIES.find(c => c.code === country)?.name ?? country);
     setLeads(newLeads);
-    const newCredits = credits - leadCount;
-    setCredits(newCredits);
-    await supabase.from("user_credits").update({ credits: newCredits, updated_at: new Date().toISOString() }).eq("user_id", user!.id);
+    const { data: newCredits, error: deductError } = await supabase.rpc("deduct_credits", { _amount: leadCount });
+    if (deductError) {
+      setSearching(false);
+      return toast.error(deductError.message || "Could not deduct credits");
+    }
+    setCredits(newCredits ?? 0);
     const { data: inserted } = await supabase.from("lead_searches").insert({
       user_id: user!.id,
       city: city.trim(),
