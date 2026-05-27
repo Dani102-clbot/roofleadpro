@@ -1,41 +1,39 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { Logo } from "@/components/Logo";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
-  DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuSeparator, DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  Coins, Download, Loader2, LogOut, Search, ShoppingCart, Star, Phone, Mail, Globe, MapPin,
-  ChevronDown, Copy, Trash2, History, Check,
-} from "lucide-react";
+import { Logo } from "@/components/Logo";
+import { Coins, Download, Loader2, LogOut, Search, ShoppingCart, Star, Trash2, History, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { Lead, generateLeads, downloadCsv } from "@/lib/sampleLeads";
 
+const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
 const COUNTRIES = [
-  { code: "US", name: "United States", flag: "🇺🇸" },
-  { code: "GB", name: "United Kingdom", flag: "🇬🇧" },
-  { code: "NG", name: "Nigeria", flag: "🇳🇬" },
-  { code: "CA", name: "Canada", flag: "🇨🇦" },
-  { code: "AU", name: "Australia", flag: "🇦🇺" },
-  { code: "ZA", name: "South Africa", flag: "🇿🇦" },
-  { code: "GH", name: "Ghana", flag: "🇬🇭" },
-  { code: "KE", name: "Kenya", flag: "🇰🇪" },
-  { code: "DE", name: "Germany", flag: "🇩🇪" },
-  { code: "FR", name: "France", flag: "🇫🇷" },
-  { code: "IN", name: "India", flag: "🇮🇳" },
-  { code: "AE", name: "UAE", flag: "🇦🇪" },
-];
-const PRESETS = [10, 25, 50, 100];
-const LOADING_MSGS = [
-  "Searching Google Maps for roofing businesses…",
-  "Pulling business listings…",
-  "Enriching with contact details…",
-  "Scraping reviews…",
-  "Finalising results…",
+  { code: "US", name: "United States" },
+  { code: "CA", name: "Canada" },
+  { code: "GB", name: "United Kingdom" },
+  { code: "AU", name: "Australia" },
+  { code: "DE", name: "Germany" },
+  { code: "FR", name: "France" },
+  { code: "ES", name: "Spain" },
+  { code: "IT", name: "Italy" },
+  { code: "MX", name: "Mexico" },
+  { code: "BR", name: "Brazil" },
+  { code: "IN", name: "India" },
+  { code: "ZA", name: "South Africa" },
 ];
 
 type SavedSearch = {
@@ -48,29 +46,19 @@ type SavedSearch = {
   created_at: string;
 };
 
-function starsBreakdown(rating: number) {
-  if (rating >= 4.7) return [68, 18, 8, 4, 2];
-  if (rating >= 4.3) return [52, 24, 14, 6, 4];
-  if (rating >= 4.0) return [42, 28, 16, 9, 5];
-  return [30, 28, 22, 12, 8];
-}
-
 export default function Dashboard() {
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const [credits, setCredits] = useState<number | null>(null);
   const [city, setCity] = useState("");
+  const [state, setState] = useState("");
   const [country, setCountry] = useState("US");
   const [leadCount, setLeadCount] = useState(25);
-  const [customCount, setCustomCount] = useState<string>("");
   const [leads, setLeads] = useState<Lead[]>([]);
   const [searching, setSearching] = useState(false);
-  const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
-  const [openReviews, setOpenReviews] = useState<Record<number, boolean>>({});
-  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [reviewLead, setReviewLead] = useState<Lead | null>(null);
   const [saved, setSaved] = useState<SavedSearch[]>([]);
   const [currentSavedId, setCurrentSavedId] = useState<string | null>(null);
-  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) navigate("/login", { replace: true });
@@ -83,13 +71,6 @@ export default function Dashboard() {
     loadSaved();
   }, [user]);
 
-  useEffect(() => {
-    if (!searching) return;
-    setLoadingMsgIdx(0);
-    const t = setInterval(() => setLoadingMsgIdx(i => Math.min(i + 1, LOADING_MSGS.length - 1)), 700);
-    return () => clearInterval(t);
-  }, [searching]);
-
   const loadSaved = async () => {
     if (!user) return;
     const { data } = await supabase.from("lead_searches")
@@ -98,45 +79,42 @@ export default function Dashboard() {
   };
 
   const maxLeads = Math.max(1, credits ?? 0);
+  const isUS = country === "US";
 
-  // Clamp leadCount when credits load
+  // Keep leadCount within bounds
   useEffect(() => {
     if (credits === null) return;
     if (leadCount > maxLeads) setLeadCount(maxLeads);
+    if (leadCount < 1) setLeadCount(1);
   }, [credits, maxLeads, leadCount]);
 
-  const setPreset = (n: number) => {
-    setLeadCount(Math.min(n, maxLeads));
-    setCustomCount("");
-  };
-  const onCustomChange = (v: string) => {
-    setCustomCount(v.replace(/\D/g, ""));
+  const handleLeadCountInput = (v: string) => {
     const n = parseInt(v.replace(/\D/g, ""), 10);
-    if (!isNaN(n) && n > 0) setLeadCount(Math.min(n, maxLeads));
+    if (isNaN(n)) return setLeadCount(1);
+    setLeadCount(Math.max(1, Math.min(maxLeads, n)));
   };
 
-  const handleSearch = async () => {
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!city.trim()) return toast.error("Enter a city to search");
     if (!country) return toast.error("Select a country");
     if (!credits || credits < leadCount) return toast.error("Not enough credits");
     setSearching(true);
-    setOpenReviews({});
-    setSelected(new Set());
-    await new Promise(r => setTimeout(r, 1800));
-    const countryName = COUNTRIES.find(c => c.code === country)?.name ?? country;
-    const newLeads = generateLeads(leadCount, city.trim(), "", countryName);
+    await new Promise(r => setTimeout(r, 900));
+    const stateValue = state.trim();
+    const newLeads = generateLeads(leadCount, city.trim(), stateValue, COUNTRIES.find(c => c.code === country)?.name ?? country);
+    setLeads(newLeads);
     const { data: newCredits, error: deductError } = await supabase.rpc("deduct_credits", { _amount: leadCount });
     if (deductError) {
       setSearching(false);
       return toast.error(deductError.message || "Could not deduct credits");
     }
     setCredits(newCredits ?? 0);
-    setLeads(newLeads);
     const { data: inserted } = await supabase.from("lead_searches").insert({
       user_id: user!.id,
       city: city.trim(),
-      state: null,
-      country: countryName,
+      state: isUS ? stateValue || null : stateValue || null,
+      country: COUNTRIES.find(c => c.code === country)?.name ?? country,
       lead_count: leadCount,
       leads: newLeads as unknown as never,
     }).select().single();
@@ -146,35 +124,12 @@ export default function Dashboard() {
     }
     setSearching(false);
     toast.success(`Found ${newLeads.length} leads — saved to history`);
-    setTimeout(() => document.getElementById("results-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   };
 
-  const exportLeads = (rows: Lead[], cityName: string) => {
-    if (!rows.length) return;
-    downloadCsv(rows, `roofleads-${cityName.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.csv`);
+  const exportLeads = (leadsToExport: Lead[], cityName: string) => {
+    if (!leadsToExport.length) return;
+    downloadCsv(leadsToExport, `roofleadpro-${cityName.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.csv`);
     toast.success("CSV downloaded");
-  };
-  const exportSelected = () => {
-    const rows = selected.size > 0 ? leads.filter((_, i) => selected.has(i)) : leads;
-    exportLeads(rows, city || "leads");
-  };
-  const toggleSelect = (i: number) => {
-    setSelected(s => {
-      const next = new Set(s);
-      next.has(i) ? next.delete(i) : next.add(i);
-      return next;
-    });
-  };
-  const selectAll = () => {
-    if (selected.size === leads.length) setSelected(new Set());
-    else setSelected(new Set(leads.map((_, i) => i)));
-  };
-
-  const copyLead = (i: number) => {
-    const l = leads[i];
-    navigator.clipboard.writeText([l.name, l.phone, l.email, l.website, l.address, l.rating].join("\t"));
-    setCopiedIdx(i);
-    setTimeout(() => setCopiedIdx(c => (c === i ? null : c)), 1400);
   };
 
   const deleteSaved = async (id: string) => {
@@ -183,16 +138,19 @@ export default function Dashboard() {
     if (currentSavedId === id) { setLeads([]); setCurrentSavedId(null); }
     toast.success("Search removed");
   };
+
   const loadSavedLeads = (s: SavedSearch) => {
     setLeads(s.leads);
     setCurrentSavedId(s.id);
     setCity(s.city);
-    setOpenReviews({});
-    setSelected(new Set());
-    setTimeout(() => document.getElementById("results-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+    if (s.state) setState(s.state);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleSignOut = async () => { await signOut(); navigate("/"); };
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/");
+  };
 
   if (authLoading || !user) {
     return <div className="flex min-h-screen items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
@@ -200,36 +158,31 @@ export default function Dashboard() {
 
   const initial = (user.email ?? "U")[0].toUpperCase();
   const canSearch = !!city.trim() && !!country && leadCount > 0 && leadCount <= (credits ?? 0) && !searching;
-  const selectedCount = selected.size;
-  const hasResults = leads.length > 0;
 
   return (
-    <div className="min-h-screen pb-32">
-      {/* NAV */}
-      <header className="sticky top-0 z-40 border-b border-border glass">
-        <div className="mx-auto flex h-[58px] max-w-[660px] items-center justify-between px-4">
-          <Logo to="/dashboard" compact />
-          <div className="flex items-center gap-2">
-            <div className="hidden items-center gap-2 rounded-full border border-border surface-2 px-3 py-1.5 sm:flex">
-              <Coins className="h-3.5 w-3.5 text-primary" />
-              <span className="font-mono text-xs tabular-nums">{credits?.toLocaleString() ?? "…"}</span>
-              <span className="font-mono text-[11px] uppercase text-muted-foreground tracking-wider">credits</span>
+    <div className="min-h-screen">
+      {/* Navbar */}
+      <header className="sticky top-0 z-40 border-b border-border/60 glass">
+        <div className="container flex h-16 items-center justify-between gap-3">
+          <Logo to="/dashboard" />
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="hidden items-center gap-2 rounded-full border border-border bg-secondary/60 px-3 py-1.5 text-sm sm:flex">
+              <Coins className="h-4 w-4 text-primary" />
+              <span className="font-medium tabular-nums">{credits?.toLocaleString() ?? "…"}</span>
+              <span className="text-muted-foreground">credits</span>
             </div>
-            <button
-              onClick={() => toast.info("Billing coming soon")}
-              className="hidden items-center gap-1.5 rounded border border-border surface-2 px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-foreground transition-colors hover:border-primary hover:text-primary sm:inline-flex"
-            >
-              <ShoppingCart className="h-3.5 w-3.5" /> Buy
-            </button>
+            <Button size="sm" variant="outline" onClick={() => toast.info("Billing coming soon")} className="hidden sm:inline-flex">
+              <ShoppingCart className="mr-2 h-4 w-4" /> Buy Credits
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="rounded-full">
-                  <Avatar className="h-8 w-8"><AvatarFallback className="bg-primary text-primary-foreground text-sm font-bold">{initial}</AvatarFallback></Avatar>
-                </button>
+                <Button variant="ghost" size="icon" className="rounded-full">
+                  <Avatar className="h-8 w-8"><AvatarFallback className="bg-primary text-primary-foreground text-sm font-medium">{initial}</AvatarFallback></Avatar>
+                </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel className="font-normal">
-                  <div className="text-sm font-bold">Signed in</div>
+                  <div className="text-sm font-medium">Signed in</div>
                   <div className="truncate text-xs text-muted-foreground">{user.email}</div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -237,7 +190,7 @@ export default function Dashboard() {
                   <Coins className="mr-2 h-4 w-4" /> {credits?.toLocaleString() ?? 0} credits
                 </DropdownMenuItem>
                 <DropdownMenuItem className="sm:hidden" onClick={() => toast.info("Billing coming soon")}>
-                  <ShoppingCart className="mr-2 h-4 w-4" /> Buy credits
+                  <ShoppingCart className="mr-2 h-4 w-4" /> Buy Credits
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleSignOut}>
                   <LogOut className="mr-2 h-4 w-4" /> Sign out
@@ -248,336 +201,248 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* APP */}
-      <main className="mx-auto max-w-[660px] px-4 pt-9">
-        <h1 className="text-[clamp(28px,7vw,48px)] font-extrabold leading-[1.0] tracking-[-0.03em]">
-          Find roofing<br />leads <span className="text-primary">anywhere.</span>
-        </h1>
-        <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
-          Names, phones, emails, websites, ratings & real customer reviews — ready to close.
-        </p>
-
-        {/* Pills */}
-        <div className="mt-7 flex flex-wrap gap-1.5">
-          {[
-            { label: "Live data", dot: "success" },
-            { label: "Phones · Emails", dot: "primary" },
-            { label: "Reviews included", dot: "success" },
-            { label: "CSV export", dot: "success" },
-          ].map(p => (
-            <span key={p.label} className="inline-flex items-center gap-1.5 rounded-full border border-border surface-2 px-2.5 py-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              <span className={`h-1 w-1 rounded-full ${p.dot === "success" ? "bg-success" : "bg-primary"}`} />
-              {p.label}
-            </span>
-          ))}
+      <main className="container py-6 md:py-10">
+        <div className="mb-6 md:mb-8">
+          <h1 className="text-2xl font-semibold sm:text-3xl">Find roofing leads</h1>
+          <p className="mt-1 text-sm text-muted-foreground">1 credit = 1 lead. Pick a location and how many you want.</p>
         </div>
 
-        {/* SEARCH CARD */}
-        <div className="mt-7 rounded-lg border border-border bg-card p-5">
-          <label htmlFor="city" className="field-label mb-2 block">City</label>
-          <div className="relative mb-4">
-            <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              id="city"
-              type="text"
-              value={city}
-              onChange={e => setCity(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && canSearch && handleSearch()}
-              placeholder="e.g. Houston, Lagos, Manchester…"
-              autoComplete="off"
-              className="h-12 w-full rounded-md border-[1.5px] border-border surface-2 pl-10 pr-3 text-base font-semibold text-foreground outline-none transition-colors placeholder:font-normal placeholder:text-muted-foreground focus:border-primary"
-            />
-          </div>
-
-          <label htmlFor="country" className="field-label mb-2 block">Country</label>
-          <div className="relative mb-5">
-            <select
-              id="country"
-              value={country}
-              onChange={e => setCountry(e.target.value)}
-              className="h-12 w-full appearance-none rounded-md border-[1.5px] border-border surface-2 px-3 pr-10 font-mono text-sm text-foreground outline-none transition-colors focus:border-primary"
-            >
-              {COUNTRIES.map(c => <option key={c.code} value={c.code} className="bg-card">{c.flag} {c.name}</option>)}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          </div>
-
-          <label className="field-label mb-2 block">Number of leads</label>
-          <div className="grid grid-cols-4 gap-1.5">
-            {PRESETS.map(n => {
-              const active = leadCount === n && !customCount;
-              const disabled = n > maxLeads;
-              return (
-                <button
-                  key={n}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => setPreset(n)}
-                  className={`rounded-md border-[1.5px] py-3 text-sm font-bold transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
-                    active
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border surface-2 text-muted-foreground hover:border-primary hover:text-foreground"
-                  }`}
-                >
-                  {n}
-                </button>
-              );
-            })}
-          </div>
-          <div className="mt-2.5 flex items-center gap-3">
-            <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">Custom:</span>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={customCount}
-              onChange={e => onCustomChange(e.target.value)}
-              placeholder={`max ${maxLeads}`}
-              className="w-24 rounded-md border-[1.5px] border-border surface-2 px-3 py-2 text-center font-mono text-sm text-foreground outline-none transition-colors focus:border-primary"
-            />
-            <span className="font-mono text-[11px] text-muted-foreground">/ {maxLeads.toLocaleString()} available</span>
-          </div>
-          <div className="mt-2 font-mono text-[11px] text-muted-foreground">
-            Fetching <span className="text-foreground">{leadCount}</span> leads · costs <span className="text-primary">{leadCount} credits</span>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleSearch}
-            disabled={!canSearch}
-            className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-md bg-primary text-[15px] font-bold uppercase tracking-wider text-primary-foreground transition-all hover:bg-[hsl(var(--primary-hover))] active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-muted-foreground/40"
-            style={{ letterSpacing: "0.06em" }}
-          >
-            {searching ? <><Loader2 className="h-4 w-4 animate-spin" /> Searching…</> : <><Search className="h-[15px] w-[15px]" /> Search leads</>}
-          </button>
-        </div>
-
-        {/* LOADING */}
-        {searching && (
-          <div className="py-11 text-center">
-            <div className="mb-4 h-[2px] w-full overflow-hidden rounded bg-border">
-              <div className="h-full animate-shimmer rounded" style={{ background: "linear-gradient(90deg, hsl(var(--primary)), hsl(var(--primary-glow)))" }} />
-            </div>
-            <div className="font-mono text-xs text-muted-foreground">{LOADING_MSGS[loadingMsgIdx]}</div>
-          </div>
-        )}
-
-        <div id="results-anchor" />
-
-        {/* RESULTS */}
-        {!searching && hasResults && (
-          <div className="mt-8">
-            <div className="mb-3.5 flex items-center justify-between border-b border-border pb-3">
-              <div className="font-mono text-xs text-muted-foreground">
-                <b className="block text-xl text-primary">{leads.length}</b>
-                leads found
+        {/* Search */}
+        <Card className="p-4 sm:p-6 shadow-[var(--shadow-elevated)] border-border/70" style={{ background: "var(--gradient-card)" }}>
+          <form onSubmit={handleSearch} className="space-y-5">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="city">City</Label>
+                <div className="relative">
+                  <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input id="city" placeholder="e.g. Austin" value={city} onChange={e => setCity(e.target.value)} className="pl-9" />
+                </div>
               </div>
-              <div className="flex gap-1.5">
-                <button
-                  onClick={selectAll}
-                  className="rounded border border-border surface-2 px-2.5 py-2 font-mono text-[11px] font-bold uppercase tracking-wider text-foreground transition-colors hover:border-primary hover:text-primary"
-                >
-                  {selected.size === leads.length ? "Clear" : "Select all"}
-                </button>
-                <button
-                  onClick={() => exportLeads(leads, city || "leads")}
-                  className="rounded border border-primary bg-primary/[0.08] px-2.5 py-2 font-mono text-[11px] font-bold uppercase tracking-wider text-primary"
-                >
-                  Export CSV
-                </button>
+              <div className="space-y-2">
+                <Label htmlFor="state">{isUS ? "State" : "State / Region"}</Label>
+                {isUS ? (
+                  <Select value={state} onValueChange={setState}>
+                    <SelectTrigger id="state"><SelectValue placeholder="Any" /></SelectTrigger>
+                    <SelectContent className="max-h-72">
+                      <SelectItem value=" ">Any</SelectItem>
+                      {US_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input id="state" placeholder="Optional" value={state} onChange={e => setState(e.target.value)} />
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="country">Country</Label>
+                <Select value={country} onValueChange={setCountry}>
+                  <SelectTrigger id="country"><SelectValue /></SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    {COUNTRIES.map(c => <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            <div className="flex flex-col gap-1">
-              {leads.map((l, i) => {
-                const isOpen = !!openReviews[i];
-                const isSel = selected.has(i);
-                const bars = starsBreakdown(l.rating);
-                return (
-                  <div
-                    key={i}
-                    className={`animate-fade-up overflow-hidden rounded-md border bg-card transition-colors ${isSel ? "border-primary" : "border-border"}`}
-                    style={{ animationDelay: `${Math.min(i * 30, 600)}ms` }}
-                  >
-                    {/* main */}
-                    <div className="cursor-pointer p-4 transition-colors hover:bg-white/[0.02]" onClick={() => toggleSelect(i)}>
-                      <div className="mb-2.5 flex items-start justify-between gap-2.5">
-                        <div className="text-[15px] font-bold leading-tight tracking-[-0.02em]">{l.name}</div>
-                        <div className="flex flex-shrink-0 items-center gap-1 font-mono text-xs">
-                          <Star className="h-3 w-3 fill-current text-[#f0c040]" />
-                          <span>{l.rating}</span>
-                          <span className="ml-0.5 text-[10px] text-muted-foreground">({l.reviews})</span>
-                        </div>
-                      </div>
+            <div className="space-y-3 rounded-lg border border-border/60 bg-secondary/40 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="lead-count" className="text-sm">Number of leads</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="lead-count"
+                    type="number"
+                    min={1}
+                    max={maxLeads}
+                    value={leadCount}
+                    onChange={e => handleLeadCountInput(e.target.value)}
+                    className="h-9 w-24 text-right tabular-nums"
+                  />
+                  <span className="text-xs text-muted-foreground">/ {maxLeads.toLocaleString()}</span>
+                </div>
+              </div>
+              <Slider
+                value={[Math.min(leadCount, maxLeads)]}
+                min={1}
+                max={Math.max(1, maxLeads)}
+                step={1}
+                onValueChange={v => setLeadCount(v[0])}
+              />
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>Costs <span className="font-medium text-foreground">{leadCount}</span> credits</span>
+                <span>You have <span className="font-medium text-foreground">{credits?.toLocaleString() ?? "…"}</span></span>
+              </div>
+            </div>
 
-                      <div className="flex flex-col gap-1.5">
-                        <InfoRow Icon={Phone} value={l.phone} has />
-                        <InfoRow Icon={Mail}  value={l.email || "No email found"} has={!!l.email} />
-                        <InfoRow Icon={Globe} value={l.website || "No website"} has={!!l.website} />
-                        <InfoRow Icon={MapPin} value={l.address} has />
-                      </div>
+            <Button type="submit" disabled={!canSearch} className="w-full sm:w-auto shadow-[var(--shadow-glow)]" size="lg">
+              {searching ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating…</> : <><Search className="mr-2 h-4 w-4" /> Generate Leads</>}
+            </Button>
+          </form>
+        </Card>
 
-                      <div className="mt-3 flex items-center justify-between gap-2">
-                        <div className="flex flex-wrap gap-1">
-                          {l.tags.map(t => (
-                            <span
-                              key={t}
-                              className={`rounded-sm border px-1.5 py-[2px] text-[10px] font-semibold uppercase tracking-[0.08em] ${
-                                t === "verified" ? "border-success/30 bg-success/[0.06] text-success"
-                                : t === "website" ? "border-primary/30 bg-primary/[0.06] text-primary"
-                                : "border-border surface-3 text-muted-foreground"
-                              }`}
-                            >
-                              {t}
+        {/* Results */}
+        <div className="mt-8">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold">
+              Results {leads.length > 0 && <span className="text-muted-foreground font-normal">({leads.length})</span>}
+            </h2>
+            <Button variant="outline" size="sm" onClick={() => exportLeads(leads, city || "leads")} disabled={!leads.length}>
+              <Download className="mr-2 h-4 w-4" /> Export CSV
+            </Button>
+          </div>
+
+          <Card className="overflow-hidden border-border/70" style={{ background: "var(--gradient-card)" }}>
+            {leads.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent text-accent-foreground">
+                  <Search className="h-5 w-5" />
+                </div>
+                <p className="mt-4 font-medium">No leads yet</p>
+                <p className="mt-1 text-sm text-muted-foreground">Run a search above to generate leads.</p>
+              </div>
+            ) : (
+              <>
+                {/* Desktop table */}
+                <div className="hidden md:block overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent border-border/60">
+                        <TableHead>Business</TableHead>
+                        <TableHead>Phone</TableHead>
+                        <TableHead>Website</TableHead>
+                        <TableHead>Rating</TableHead>
+                        <TableHead>Reviews</TableHead>
+                        <TableHead>Address</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {leads.map((l, i) => (
+                        <TableRow key={i} className="border-border/40">
+                          <TableCell className="font-medium">{l.name}</TableCell>
+                          <TableCell>
+                            <a className="text-muted-foreground hover:text-foreground" href={`tel:${l.phone}`}>{l.phone}</a>
+                          </TableCell>
+                          <TableCell>
+                            <a className="text-primary hover:underline" href={`https://${l.website}`} target="_blank" rel="noreferrer">{l.website}</a>
+                          </TableCell>
+                          <TableCell>
+                            <span className="inline-flex items-center gap-1 tabular-nums">
+                              <Star className="h-3.5 w-3.5 fill-current text-amber-400" />{l.rating}
                             </span>
-                          ))}
+                          </TableCell>
+                          <TableCell>
+                            <button
+                              onClick={() => setReviewLead(l)}
+                              className="text-primary hover:underline tabular-nums"
+                            >
+                              {l.reviews}
+                            </button>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">{l.address}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Mobile cards */}
+                <div className="md:hidden divide-y divide-border/40">
+                  {leads.map((l, i) => (
+                    <div key={i} className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{l.name}</div>
+                          <div className="mt-0.5 text-xs text-muted-foreground truncate">{l.address}</div>
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={e => { e.stopPropagation(); copyLead(i); }}
-                            className="rounded border border-border bg-transparent px-2.5 py-1 font-mono text-[10px] text-muted-foreground transition-colors hover:border-primary hover:text-primary"
-                          >
-                            {copiedIdx === i ? <span className="flex items-center gap-1"><Check className="h-3 w-3" />Copied</span> : <span className="flex items-center gap-1"><Copy className="h-3 w-3" />Copy</span>}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={e => { e.stopPropagation(); setOpenReviews(r => ({ ...r, [i]: !r[i] })); }}
-                            className={`flex items-center gap-1.5 rounded border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] transition-colors ${
-                              isOpen ? "border-primary-glow bg-primary-glow/[0.06] text-primary-glow" : "border-border text-muted-foreground hover:border-primary-glow hover:text-primary-glow"
-                            }`}
-                            style={{ color: isOpen ? "hsl(var(--primary-glow))" : undefined, borderColor: isOpen ? "hsl(var(--primary-glow))" : undefined }}
-                          >
-                            Reviews
-                            <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? "rotate-180" : ""}`} />
-                          </button>
-                        </div>
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-secondary px-2 py-1 text-xs tabular-nums">
+                          <Star className="h-3 w-3 fill-current text-amber-400" />{l.rating}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                        <a className="text-muted-foreground" href={`tel:${l.phone}`}>{l.phone}</a>
+                        <a className="text-primary truncate" href={`https://${l.website}`} target="_blank" rel="noreferrer">{l.website}</a>
+                        <button onClick={() => setReviewLead(l)} className="text-primary">
+                          {l.reviews} reviews
+                        </button>
                       </div>
                     </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </Card>
+        </div>
 
-                    {/* reviews panel */}
-                    {isOpen && (
-                      <div className="border-t border-border surface-2 px-4 py-3.5 animate-fade-up">
-                        <div className="mb-3 flex items-center justify-between font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-                          <span>Customer reviews</span>
-                          <span>{l.reviews} total on Google</span>
-                        </div>
-                        <div className="mb-3.5 grid grid-cols-[auto_1fr] gap-3 border-b border-border pb-3.5">
-                          <div>
-                            <div className="text-4xl font-extrabold leading-none tracking-[-0.04em]">{l.rating}</div>
-                            <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">out of 5</div>
-                          </div>
-                          <div className="flex-1 space-y-1">
-                            {bars.map((pct, bi) => (
-                              <div key={bi} className="flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
-                                <span>{5 - bi}★</span>
-                                <div className="h-1 flex-1 overflow-hidden rounded bg-border">
-                                  <div className="h-full rounded transition-all" style={{ width: `${pct}%`, background: "hsl(var(--primary-glow))" }} />
-                                </div>
-                                <span className="min-w-[24px] text-right">{pct}%</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="flex flex-col gap-2.5">
-                          {l.reviewList.map((r, ri) => (
-                            <div
-                              key={ri}
-                              className="rounded surface-3 border-l-2 p-3"
-                              style={{ borderLeftColor: r.sentiment === "positive" ? "hsl(var(--success))" : r.sentiment === "neutral" ? "hsl(var(--primary-glow))" : "#a33" }}
-                            >
-                              <div className="mb-1.5 flex items-center justify-between gap-2">
-                                <div className="text-xs font-bold">{r.author}</div>
-                                <div className="flex items-center gap-1.5">
-                                  <div className="flex">
-                                    {Array.from({ length: 5 }).map((_, si) => (
-                                      <Star key={si} className={`h-3 w-3 ${si < r.rating ? "fill-current text-[#f0c040]" : "text-border"}`} />
-                                    ))}
-                                  </div>
-                                  <span className="font-mono text-[10px] text-muted-foreground">{r.date}</span>
-                                </div>
-                              </div>
-                              <div className="font-mono text-xs leading-relaxed text-muted-foreground">{r.text}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* EMPTY STATE */}
-        {!searching && !hasResults && (
-          <div className="py-16 text-center">
-            <div className="mb-3 text-4xl opacity-25">🏠</div>
-            <div className="text-base font-bold text-muted-foreground">No search yet</div>
-            <div className="mt-1 font-mono text-xs text-border">Configure your search above and hit Search</div>
-          </div>
-        )}
-
-        {/* SAVED */}
-        <section className="mt-12">
-          <div className="mb-3 flex items-center gap-2">
-            <History className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="label-eyebrow">Saved searches</span>
-            <span className="font-mono text-xs text-muted-foreground">({saved.length})</span>
+        {/* Saved searches */}
+        <div className="mt-10">
+          <div className="mb-4 flex items-center gap-2">
+            <History className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-lg font-semibold">Saved searches</h2>
+            <span className="text-sm text-muted-foreground">({saved.length})</span>
           </div>
           {saved.length === 0 ? (
-            <div className="rounded border border-border bg-card p-5 font-mono text-xs text-muted-foreground">
+            <Card className="p-6 text-sm text-muted-foreground border-border/70" style={{ background: "var(--gradient-card)" }}>
               Your generated lead lists will appear here so you can come back and download them anytime.
-            </div>
+            </Card>
           ) : (
-            <div className="grid gap-1 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {saved.map(s => (
-                <div key={s.id} className="rounded border border-border bg-card p-4 transition-colors hover:border-primary/40">
+                <Card key={s.id} className="p-4 border-border/70 transition hover:border-primary/40" style={{ background: "var(--gradient-card)" }}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-bold">{s.city}</div>
-                      <div className="truncate font-mono text-[11px] text-muted-foreground">{s.country}</div>
+                      <div className="font-medium truncate">{s.city}{s.state ? `, ${s.state}` : ""}</div>
+                      <div className="text-xs text-muted-foreground truncate">{s.country}</div>
                     </div>
-                    <span className="flex-shrink-0 rounded border border-border surface-2 px-2 py-0.5 font-mono text-[10px] tabular-nums">{s.lead_count} leads</span>
+                    <span className="rounded-md bg-secondary px-2 py-1 text-xs tabular-nums shrink-0">{s.lead_count} leads</span>
                   </div>
-                  <div className="mt-1 font-mono text-[10px] text-muted-foreground">
+                  <div className="mt-2 text-xs text-muted-foreground">
                     {new Date(s.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                   </div>
-                  <div className="mt-3 flex gap-1.5">
-                    <button onClick={() => loadSavedLeads(s)} className="flex-1 rounded border border-border surface-2 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-foreground transition-colors hover:border-primary hover:text-primary">View</button>
-                    <button onClick={() => exportLeads(s.leads, s.city)} className="rounded border border-border surface-2 px-2.5 py-1.5 text-muted-foreground transition-colors hover:border-primary hover:text-primary"><Download className="h-3.5 w-3.5" /></button>
-                    <button onClick={() => deleteSaved(s.id)} className="rounded border border-border surface-2 px-2.5 py-1.5 text-destructive transition-colors hover:border-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
+                  <div className="mt-4 flex items-center gap-2">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => loadSavedLeads(s)}>View</Button>
+                    <Button size="sm" variant="outline" onClick={() => exportLeads(s.leads, s.city)}>
+                      <Download className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => deleteSaved(s.id)}>
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
                   </div>
-                </div>
+                </Card>
               ))}
             </div>
           )}
-        </section>
+        </div>
       </main>
 
-      {/* STICKY EXPORT BAR */}
-      {selectedCount > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 border-t-2 border-primary surface-2 animate-fade-up">
-          <div className="mx-auto flex max-w-[660px] items-center justify-between gap-3 px-4 py-3">
-            <span className="font-mono text-xs text-muted-foreground">
-              <b className="text-primary">{selectedCount}</b> selected
-            </span>
-            <div className="flex gap-2">
-              <button onClick={() => setSelected(new Set())} className="rounded border border-border bg-transparent px-3 py-2 font-mono text-[11px] font-bold uppercase tracking-wider text-foreground transition-colors hover:border-primary">Clear</button>
-              <button onClick={exportSelected} className="rounded bg-primary px-4 py-2 font-mono text-[11px] font-bold uppercase tracking-wider text-primary-foreground transition-colors hover:bg-[hsl(var(--primary-hover))]">Export CSV</button>
-            </div>
+      {/* Reviews dialog */}
+      <Dialog open={!!reviewLead} onOpenChange={o => !o && setReviewLead(null)}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{reviewLead?.name}</DialogTitle>
+            <DialogDescription>
+              <span className="inline-flex items-center gap-1">
+                <Star className="h-3.5 w-3.5 fill-current text-amber-400" />
+                <span className="text-foreground font-medium">{reviewLead?.rating}</span>
+                <span>· {reviewLead?.reviews} reviews</span>
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            {reviewLead?.reviewList.map((r, i) => (
+              <div key={i} className="rounded-lg border border-border/60 bg-secondary/40 p-4">
+                <div className="flex items-center justify-between">
+                  <div className="font-medium text-sm">{r.author}</div>
+                  <div className="flex items-center gap-1 text-xs">
+                    {Array.from({ length: 5 }).map((_, idx) => (
+                      <Star key={idx} className={`h-3 w-3 ${idx < r.rating ? "fill-current text-amber-400" : "text-muted-foreground/30"}`} />
+                    ))}
+                  </div>
+                </div>
+                <p className="mt-2 text-sm text-muted-foreground">{r.text}</p>
+                <div className="mt-2 text-xs text-muted-foreground/70">{r.date}</div>
+              </div>
+            ))}
           </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function InfoRow({ Icon, value, has }: { Icon: typeof Phone; value: string; has: boolean }) {
-  return (
-    <div className={`flex items-start gap-2 font-mono text-xs leading-snug ${has ? "text-foreground" : "text-muted-foreground"}`}>
-      <Icon className={`mt-0.5 h-3 w-3 flex-shrink-0 ${has ? "text-[hsl(var(--primary-glow))]" : "opacity-45"}`} />
-      <span className="break-all">{value}</span>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
