@@ -1,17 +1,13 @@
 import { Logo } from "./Logo";
 
 export const SiteFooter = () => (
-  <footer className="border-t border-border">
-    <div className="mx-auto flex max-w-[1000px] flex-col items-start justify-between gap-6 px-5 py-8 md:flex-row md:items-center">
-      <div className="flex items-center gap-3">
+  <footer className="border-t border-border/60 bg-secondary/30">
+    <div className="container flex flex-col items-start justify-between gap-6 py-10 md:flex-row md:items-center">
+      <div className="space-y-2">
         <Logo />
+        <p className="text-sm text-muted-foreground">Roofing leads, on demand. Credits never expire.</p>
       </div>
-      <div className="flex flex-wrap gap-5 font-mono text-xs text-muted-foreground">
-        <a href="#" className="hover:text-foreground">Privacy</a>
-        <a href="#" className="hover:text-foreground">Terms</a>
-        <a href="#" className="hover:text-foreground">Contact</a>
-      </div>
-      <p className="font-mono text-xs text-muted-foreground">© {new Date().getFullYear()} RoofLeads Pro</p>
+      <p className="text-xs text-muted-foreground">© {new Date().getFullYear()} RoofLeadPro. All rights reserved.</p>
     </div>
   </footer>
 );
