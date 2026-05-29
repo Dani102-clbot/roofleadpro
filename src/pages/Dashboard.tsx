@@ -101,31 +101,40 @@ export default function Dashboard() {
     if (!country) return toast.error("Select a country");
     if (!credits || credits < leadCount) return toast.error("Not enough credits");
     setSearching(true);
-    await new Promise(r => setTimeout(r, 900));
+    setLastSource(null);
     const stateValue = state.trim();
-    const newLeads = generateLeads(leadCount, city.trim(), stateValue, COUNTRIES.find(c => c.code === country)?.name ?? country);
-    setLeads(newLeads);
-    const { data: newCredits, error: deductError } = await supabase.rpc("deduct_credits", { _amount: leadCount });
-    if (deductError) {
-      setSearching(false);
-      return toast.error(deductError.message || "Could not deduct credits");
-    }
-    setCredits(newCredits ?? 0);
-    const { data: inserted } = await supabase.from("lead_searches").insert({
-      user_id: user!.id,
-      city: city.trim(),
-      state: isUS ? stateValue || null : stateValue || null,
-      country: COUNTRIES.find(c => c.code === country)?.name ?? country,
-      lead_count: leadCount,
-      leads: newLeads as unknown as never,
-    }).select().single();
-    if (inserted) {
-      setCurrentSavedId(inserted.id);
-      loadSaved();
-    }
+    const countryName = COUNTRIES.find(c => c.code === country)?.name ?? country;
+
+    const { data, error } = await supabase.functions.invoke("generate-leads", {
+      body: {
+        city: city.trim(),
+        state: stateValue || null,
+        country: countryName,
+        count: leadCount,
+      },
+    });
     setSearching(false);
-    toast.success(`Found ${newLeads.length} leads — saved to history`);
+
+    if (error || !data || (data as any).error) {
+      const msg = (data as any)?.error || error?.message || "Search failed";
+      return toast.error(typeof msg === "string" ? msg : "Search failed");
+    }
+
+    const { leads: newLeads, credits_remaining, source, search_id } = data as {
+      leads: Lead[]; credits_remaining: number; source: "cache" | "live"; search_id: string | null;
+    };
+    setLeads(newLeads);
+    setCredits(credits_remaining);
+    setLastSource(source);
+    if (search_id) setCurrentSavedId(search_id);
+    loadSaved();
+    toast.success(
+      source === "cache"
+        ? `Found ${newLeads.length} leads (instant from cache)`
+        : `Found ${newLeads.length} fresh leads`
+    );
   };
+
 
   const exportLeads = (leadsToExport: Lead[], cityName: string) => {
     if (!leadsToExport.length) return;
