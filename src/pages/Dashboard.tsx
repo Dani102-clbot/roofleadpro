@@ -291,8 +291,13 @@ export default function Dashboard() {
         {/* Results */}
         <div className="mt-8">
           <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
               Results {leads.length > 0 && <span className="text-muted-foreground font-normal">({leads.length})</span>}
+              {lastSource && (
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${lastSource === "live" ? "bg-primary/15 text-primary" : "bg-secondary text-muted-foreground"}`}>
+                  {lastSource === "live" ? "Fresh" : "Cached"}
+                </span>
+              )}
             </h2>
             <Button variant="outline" size="sm" onClick={() => exportLeads(leads, city || "leads")} disabled={!leads.length}>
               <Download className="mr-2 h-4 w-4" /> Export CSV
