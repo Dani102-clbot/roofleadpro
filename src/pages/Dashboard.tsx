@@ -18,7 +18,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Logo } from "@/components/Logo";
 import { Coins, Download, Loader2, LogOut, Search, ShoppingCart, Star, Trash2, History, MapPin } from "lucide-react";
 import { toast } from "sonner";
-import { Lead, generateLeads, downloadCsv } from "@/lib/sampleLeads";
+import { Lead, downloadCsv } from "@/lib/sampleLeads";
 
 const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
 const COUNTRIES = [
@@ -59,6 +59,7 @@ export default function Dashboard() {
   const [reviewLead, setReviewLead] = useState<Lead | null>(null);
   const [saved, setSaved] = useState<SavedSearch[]>([]);
   const [currentSavedId, setCurrentSavedId] = useState<string | null>(null);
+  const [lastSource, setLastSource] = useState<"cache" | "live" | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) navigate("/login", { replace: true });
@@ -100,31 +101,40 @@ export default function Dashboard() {
     if (!country) return toast.error("Select a country");
     if (!credits || credits < leadCount) return toast.error("Not enough credits");
     setSearching(true);
-    await new Promise(r => setTimeout(r, 900));
+    setLastSource(null);
     const stateValue = state.trim();
-    const newLeads = generateLeads(leadCount, city.trim(), stateValue, COUNTRIES.find(c => c.code === country)?.name ?? country);
-    setLeads(newLeads);
-    const { data: newCredits, error: deductError } = await supabase.rpc("deduct_credits", { _amount: leadCount });
-    if (deductError) {
-      setSearching(false);
-      return toast.error(deductError.message || "Could not deduct credits");
-    }
-    setCredits(newCredits ?? 0);
-    const { data: inserted } = await supabase.from("lead_searches").insert({
-      user_id: user!.id,
-      city: city.trim(),
-      state: isUS ? stateValue || null : stateValue || null,
-      country: COUNTRIES.find(c => c.code === country)?.name ?? country,
-      lead_count: leadCount,
-      leads: newLeads as unknown as never,
-    }).select().single();
-    if (inserted) {
-      setCurrentSavedId(inserted.id);
-      loadSaved();
-    }
+    const countryName = COUNTRIES.find(c => c.code === country)?.name ?? country;
+
+    const { data, error } = await supabase.functions.invoke("generate-leads", {
+      body: {
+        city: city.trim(),
+        state: stateValue || null,
+        country: countryName,
+        count: leadCount,
+      },
+    });
     setSearching(false);
-    toast.success(`Found ${newLeads.length} leads — saved to history`);
+
+    if (error || !data || (data as any).error) {
+      const msg = (data as any)?.error || error?.message || "Search failed";
+      return toast.error(typeof msg === "string" ? msg : "Search failed");
+    }
+
+    const { leads: newLeads, credits_remaining, source, search_id } = data as {
+      leads: Lead[]; credits_remaining: number; source: "cache" | "live"; search_id: string | null;
+    };
+    setLeads(newLeads);
+    setCredits(credits_remaining);
+    setLastSource(source);
+    if (search_id) setCurrentSavedId(search_id);
+    loadSaved();
+    toast.success(
+      source === "cache"
+        ? `Found ${newLeads.length} leads (instant from cache)`
+        : `Found ${newLeads.length} fresh leads`
+    );
   };
+
 
   const exportLeads = (leadsToExport: Lead[], cityName: string) => {
     if (!leadsToExport.length) return;
@@ -281,8 +291,13 @@ export default function Dashboard() {
         {/* Results */}
         <div className="mt-8">
           <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
               Results {leads.length > 0 && <span className="text-muted-foreground font-normal">({leads.length})</span>}
+              {lastSource && (
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${lastSource === "live" ? "bg-primary/15 text-primary" : "bg-secondary text-muted-foreground"}`}>
+                  {lastSource === "live" ? "Fresh" : "Cached"}
+                </span>
+              )}
             </h2>
             <Button variant="outline" size="sm" onClick={() => exportLeads(leads, city || "leads")} disabled={!leads.length}>
               <Download className="mr-2 h-4 w-4" /> Export CSV
