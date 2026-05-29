@@ -59,6 +59,7 @@ export default function Dashboard() {
   const [reviewLead, setReviewLead] = useState<Lead | null>(null);
   const [saved, setSaved] = useState<SavedSearch[]>([]);
   const [currentSavedId, setCurrentSavedId] = useState<string | null>(null);
+  const [lastSource, setLastSource] = useState<"cache" | "live" | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) navigate("/login", { replace: true });
