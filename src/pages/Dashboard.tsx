@@ -18,7 +18,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Logo } from "@/components/Logo";
 import { Coins, Download, Loader2, LogOut, Search, ShoppingCart, Star, Trash2, History, MapPin } from "lucide-react";
 import { toast } from "sonner";
-import { Lead, generateLeads, downloadCsv } from "@/lib/sampleLeads";
+import { Lead, downloadCsv } from "@/lib/sampleLeads";
 
 const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
 const COUNTRIES = [
